@@ -22,7 +22,7 @@ Migrated all state handling to **Redis**.
 - **No Disk I/O:** Eliminates the need for slow "pickle" files, making the plugin much faster and more reliable in containerized environments.
 
 ### ⚙️ Modern Configuration & Persistence
-- **Pydantic-ready:** Uses a robust validation system to ensure your settings are always correct.
+- **Robust Dataclasses:** Uses Python's native dataclass system for reliable, lightweight configuration management.
 - **Persistent Storage:** Your settings (Title, Description, Columns) are saved to `/data/plugins/TMS_Persistent_Config/` and will survive plugin updates.
 - **Dynamic UI:** The settings page in Dispatcharr stays perfectly in sync with your persistent file.
 
