@@ -36,7 +36,7 @@ except Exception as e:
 
 class Plugin:
     name = "too_many_streams"
-    version = "1.1.0"
+    version = "2.0.0"
     description = "Handles scenarios where too many streams are open and what users see."
     initialized = False
 
