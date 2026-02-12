@@ -64,5 +64,9 @@ Migrated all state handling to **Redis**.
 ## Development
 This overhaul focuses on efficiency and production stability. Feel free to fork and contribute to further improve the layout or performance.
 
+## Credits & Disclaimers
+- **Original Author:** This plugin is a fork of the original work by [JamesWRC](https://github.com/JamesWRC/Dispatcharr_Too_Many_Streams).
+- **Overhaul Development:** The extensive refactoring, performance optimizations, and architectural modernizations in this "Overhaul Edition" were driven and executed by **Gemini-cli**.
+
 ---
 *Maintained with ❤️ for the Dispatcharr community.*
