@@ -1,0 +1,65 @@
+{
+  "name": "too_many_streams",
+  "version": "1.1.0",
+  "description": "Handles scenarios where too many streams are open and what users see.",
+  "author": "JamesWRC",
+  "fields": [
+    {
+      "id": "stream_title",
+      "label": "Stream Title",
+      "type": "string",
+      "default": "Sorry, this channel is unavailable.",
+      "placeholder": "The title displayed on the 'Too Many Streams' image.",
+      "help_text": "The title displayed on the 'Too Many Streams' image."
+    },
+    {
+      "id": "stream_description",
+      "label": "Stream Description",
+      "type": "string",
+      "default": "While this channel is not currently available, here are some other channels you can watch.",
+      "placeholder": "The description displayed on the 'Too Many Streams' image.",
+      "help_text": "The description displayed on the 'Too Many Streams' image."
+    },
+    {
+      "id": "stream_channel_cols",
+      "label": "Number of channel columns",
+      "type": "number",
+      "default": 5,
+      "placeholder": "The number of columns of channels to display on the 'Too Many Streams' image.",
+      "help_text": "The number of columns of channels to display on the 'Too Many Streams' image."
+    },
+    {
+      "id": "tms_image_path",
+      "label": "Static Image Path",
+      "type": "string",
+      "default": null,
+      "placeholder": "Path to a static image to use instead of the dynamic image.",
+      "help_text": "Path to a static image to use instead of the dynamic image."
+    },
+    {
+      "id": "tms_log_level",
+      "label": "Log Level",
+      "type": "string",
+      "default": "INFO",
+      "placeholder": "Log level for the plugin.",
+      "help_text": "Log level for the plugin."
+    }
+  ],
+  "actions": [
+    {
+      "id": "apply_too_many_streams",
+      "label": "Apply 'Too Many Streams' to channels",
+      "description": "Adds the 'Too Many Streams' stream to the bottom of all channels."
+    },
+    {
+      "id": "remove_too_many_streams",
+      "label": "Remove 'Too Many Streams' from channels",
+      "description": "Removes the 'Too Many Streams' stream from all channels."
+    },
+    {
+      "id": "save_plugin_config",
+      "label": "Save Plugin Config",
+      "description": "Saves the current plugin configuration to persistent storage."
+    }
+  ]
+}
