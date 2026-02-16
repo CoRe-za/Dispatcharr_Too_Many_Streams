@@ -11,6 +11,7 @@ from .schemas import PluginConfig
 class TooManyStreamsConfig:
     _STREAM_URL = 'http://{host}:{port}/stream.ts'
     PLUGIN_KEY = 'too_many_streams'
+    _cached_config = None
     
     @staticmethod
     def get_persistent_storage_path() -> str:
@@ -35,7 +36,17 @@ class TooManyStreamsConfig:
         return {}
 
     @staticmethod
+    def clear_cache():
+        """Clears the cached configuration, forcing a reload on the next get_config() call."""
+        TooManyStreamsConfig._cached_config = None
+        logger.info("Plugin configuration cache cleared.")
+
+    @staticmethod
     def get_config() -> PluginConfig:
+        # 0. Check cache first
+        if TooManyStreamsConfig._cached_config is not None:
+            return TooManyStreamsConfig._cached_config
+
         from apps.plugins.models import PluginConfig as DbPluginConfig
         
         # Start with hardcoded defaults from the class
@@ -71,7 +82,8 @@ class TooManyStreamsConfig:
             final_data.update(env_config)
 
         logger.info(f"FINAL RESOLVED CONFIG: {final_data}")
-        return PluginConfig.from_dict(final_data)
+        TooManyStreamsConfig._cached_config = PluginConfig.from_dict(final_data)
+        return TooManyStreamsConfig._cached_config
 
     @staticmethod
     def get_plugin_config(config_key:str=None):
@@ -100,5 +112,6 @@ class TooManyStreamsConfig:
             with open(config_path, "w") as f:
                 json.dump(config, f, indent=4)
             logger.info(f"Successfully saved config to {config_path}")
+            TooManyStreamsConfig.clear_cache()
         except Exception as e:
             logger.error(f"Error saving config to {config_path}: {e}")

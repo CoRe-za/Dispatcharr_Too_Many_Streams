@@ -36,7 +36,7 @@ except Exception as e:
 
 class Plugin:
     name = "too_many_streams"
-    version = "2.0.0"
+    version = "2.0.1"
     description = "Handles scenarios where too many streams are open and what users see."
     initialized = False
 
@@ -117,6 +117,11 @@ class Plugin:
                 "message": "Saves the current plugin configuration to persistent storage.",
             },
         },
+        {
+            "id": "search_for_config",
+            "label": "Search for Persistent Config",
+            "description": "Manually searches for and reloads the persistent configuration file from disk.",
+        },
     ]    
 
     def __init__(self):
@@ -177,5 +182,9 @@ class Plugin:
                 TooManyStreamsConfig.save_plugin_persistent_config(settings)
             else:
                 logger.warning("No settings found to save.")
+        elif action == "search_for_config":
+            logger.info("Manually searching for and reloading config...")
+            TooManyStreamsConfig.clear_cache()
+            TooManyStreamsConfig.get_config()
 
         return {"status": "ok"}
