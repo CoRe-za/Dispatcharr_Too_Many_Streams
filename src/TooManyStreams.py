@@ -6,6 +6,7 @@ import time
 import os, shutil, subprocess, sys, threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import queue
+import socket
 
 from apps.channels.models import Channel, ChannelStream, Stream
 from apps.proxy.ts_proxy.server import ProxyServer
@@ -44,25 +45,32 @@ class TooManyStreams:
 
     @staticmethod
     def get_stream() -> Stream:
-        stream:dict = Stream.objects.values('id', 'name', 'url').filter(
-            name=TooManyStreams.STREAM_NAME, url=TooManyStreamsConfig.get_stream_url())
+        # We search by name only now, as the URL is dynamic
+        stream = Stream.objects.filter(name=TooManyStreams.STREAM_NAME).first()
         if not stream:
             raise TMS_CustomStreamNotFound("TooManyStreams: Stream not found.")
-        return Stream.objects.get(id=stream[0]['id'])
+        return stream
     
     @staticmethod
-    def get_or_create_stream() -> Stream:
+    def get_or_create_stream(url: str = None) -> Stream:
         try:
-            return TooManyStreams.get_stream()
+            stream = TooManyStreams.get_stream()
+            if url and stream.url != url:
+                stream.url = url
+                stream.save()
+                logger.info(f"TooManyStreams: Updated stream URL to {url}")
+            return stream
         except TMS_CustomStreamNotFound:
             data = {
                 'name': TooManyStreams.STREAM_NAME,
-                'url': TooManyStreamsConfig.get_stream_url(),
+                'url': url or TooManyStreamsConfig.get_stream_url(),
                 'is_custom': True,
                 'channel_group': None,
                 'stream_profile_id': None,
             }
-            return Stream.objects.create(**data)
+            stream = Stream.objects.create(**data)
+            logger.info(f"TooManyStreams: Created new stream with URL {stream.url}")
+            return stream
 
     @staticmethod
     def add_stream_to_channel(channel_id:int) -> None:
@@ -75,8 +83,8 @@ class TooManyStreams:
 
     @staticmethod   
     def remove_stream_from_channel(channel_id:int) -> None:
-        custom_stream = TooManyStreams.get_or_create_stream()
         try:
+            custom_stream = TooManyStreams.get_stream()
             channel = Channel.objects.get(id=channel_id)
             if custom_stream in channel.streams.all():
                 channel.streams.remove(custom_stream.id)
@@ -120,12 +128,9 @@ class TooManyStreams:
             
             def _wrapped_get_stream(self, *args, **kwargs):
                 redis_client = RedisClient.get_client()
-                error_reason = None
-
                 if not self.streams.exists():
                     return None, None, "No streams assigned to channel"
 
-                # 1. Check if a stream is already active for this channel (Restore session logic)
                 stream_id_bytes = redis_client.get(f"channel_stream:{self.id}")
                 if stream_id_bytes:
                     try:
@@ -135,7 +140,6 @@ class TooManyStreams:
                             return stream_id, int(profile_id_bytes), None
                     except (ValueError, TypeError): pass
 
-                # 2. Try to find an available stream
                 has_streams_but_maxed_out = False
                 has_active_profiles = False
 
@@ -144,7 +148,6 @@ class TooManyStreams:
                     if not m3u_account: continue
 
                     profiles = m3u_account.profiles.all()
-                    # Ensure default profile is checked first
                     sorted_profiles = sorted(profiles, key=lambda x: not x.is_default)
 
                     for profile in sorted_profiles:
@@ -164,13 +167,11 @@ class TooManyStreams:
                         else:
                             has_streams_but_maxed_out = True
 
-                # 3. Handle maxed out scenario
                 if has_streams_but_maxed_out:
                     if not TooManyStreams.is_streams_maxed(self.id):
                         TooManyStreams.mark_streams_maxed(self.id)
                         return None, None, "All M3U profiles have reached maximum connection limits"
                     
-                    # Return our custom stream
                     try:
                         custom_stream = TooManyStreams.get_stream()
                         return custom_stream.id, None, None
@@ -190,7 +191,9 @@ class TooManyStreams:
         for c in Channel.objects.all(): TooManyStreams.remove_stream_from_channel(c.id)
 
     @staticmethod
-    def stream_still_mpegts_http_thread(image_path=None, host="127.0.0.1", port=8081):
+    def stream_still_mpegts_http_thread(image_path=None, host="127.0.0.1", port=0):
+        """High-performance single-process broadcaster with auto-port selection."""
+        
         ffmpeg_bin = shutil.which("ffmpeg")
         if not ffmpeg_bin: return
 
@@ -267,5 +270,19 @@ class TooManyStreams:
                         if q in state.clients: state.clients.remove(q)
             def log_message(self, *args): pass
 
+        # AUTO-PORT SELECTION
         httpd = ThreadingHTTPServer((host, port), Handler)
+        actual_port = httpd.server_port
+        actual_host = httpd.server_address[0]
+        
+        # Update the database with the actual port found
+        internal_url = f"http://{actual_host}:{actual_port}/stream.ts"
+        logger.info(f"TMS: HTTP Server starting on {internal_url}")
+        
+        # Update the Stream object in the database
+        try:
+            TooManyStreams.get_or_create_stream(url=internal_url)
+        except Exception as e:
+            logger.error(f"TMS: Failed to update database with internal URL: {e}")
+
         httpd.serve_forever()

@@ -12,7 +12,7 @@ class TooManyStreamsConfig:
     _STREAM_URL = 'http://{host}:{port}/stream.ts'
     PLUGIN_KEY = 'too_many_streams'
     _cached_config = None
-    
+
     @staticmethod
     def get_persistent_storage_path() -> str:
         # User specified path: data/plugins/TMS_Persistent_Config
@@ -95,15 +95,15 @@ class TooManyStreamsConfig:
 
     @staticmethod
     def get_host_and_port() -> tuple[str, int]:
-        _host = os.environ.get("TMS_HOST", "0.0.0.0")
-        _port = int(os.environ.get("TMS_PORT", 1337))
+        # SEAMLESS UPDATE: Use 127.0.0.1 and port 0 (auto) by default
+        _host = os.environ.get("TMS_HOST", "127.0.0.1")
+        _port = int(os.environ.get("TMS_PORT", 0))
         return (_host, _port)
     
     @staticmethod
     def get_stream_url() -> str:
         host, port = TooManyStreamsConfig.get_host_and_port()
-        display_host = "127.0.0.1" if host == "0.0.0.0" else host
-        return TooManyStreamsConfig._STREAM_URL.format(host=display_host, port=port)
+        return TooManyStreamsConfig._STREAM_URL.format(host=host, port=port)
             
     @staticmethod
     def save_plugin_persistent_config(config: dict):
