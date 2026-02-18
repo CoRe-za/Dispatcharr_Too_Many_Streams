@@ -3,10 +3,13 @@
 import logging
 import os
 import time
-import os, shutil, subprocess, sys, threading
+import shutil
+import subprocess
+import sys
+import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import queue
-import socket
+import select
 
 from apps.channels.models import Channel, ChannelStream, Stream
 from apps.proxy.ts_proxy.server import ProxyServer
@@ -19,7 +22,6 @@ from .PillowImageGen import PillowImageGen
 
 
 logger = logging.getLogger('plugins.too_many_streams.TooManyStreams')
-logger.setLevel(os.environ.get("TMS_LOG_LEVEL", os.environ.get("DISPATCHARR_LOG_LEVEL", "INFO")).upper())
 
 class TooManyStreams:
 
@@ -45,7 +47,6 @@ class TooManyStreams:
 
     @staticmethod
     def get_stream() -> Stream:
-        # We search by name only now, as the URL is dynamic
         stream = Stream.objects.filter(name=TooManyStreams.STREAM_NAME).first()
         if not stream:
             raise TMS_CustomStreamNotFound("TooManyStreams: Stream not found.")
@@ -74,8 +75,8 @@ class TooManyStreams:
 
     @staticmethod
     def add_stream_to_channel(channel_id:int) -> None:
-        custom_stream = TooManyStreams.get_or_create_stream()
         try:
+            custom_stream = TooManyStreams.get_or_create_stream()
             channel = Channel.objects.get(id=channel_id)
             if custom_stream not in channel.streams.all():
                 ChannelStream.objects.create(channel=channel, stream_id=custom_stream.id, order=9999)
@@ -192,10 +193,12 @@ class TooManyStreams:
 
     @staticmethod
     def stream_still_mpegts_http_thread(image_path=None, host="127.0.0.1", port=0):
-        """High-performance single-process broadcaster with auto-port selection."""
+        """Safe single-process broadcaster."""
         
         ffmpeg_bin = shutil.which("ffmpeg")
-        if not ffmpeg_bin: return
+        if not ffmpeg_bin: 
+            logger.error("FFmpeg not found in path.")
+            return
 
         class SharedState:
             def __init__(self):
@@ -215,8 +218,15 @@ class TooManyStreams:
             ]
 
         def start_ffmpeg():
-            if state.process: state.process.terminate()
-            state.process = subprocess.Popen(make_cmd(state.current_img), stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+            if state.process: 
+                try: state.process.terminate()
+                except: pass
+            state.process = subprocess.Popen(
+                make_cmd(state.current_img), 
+                stdout=subprocess.PIPE, 
+                stderr=subprocess.DEVNULL,
+                bufsize=10**6
+            )
 
         start_ffmpeg()
 
@@ -236,18 +246,26 @@ class TooManyStreams:
 
         def broadcaster():
             while True:
-                if not state.process or state.process.stdout.closed:
-                    time.sleep(0.1); continue
+                if not state.process or not state.process.stdout:
+                    time.sleep(0.5); continue
+                
                 if not state.clients:
                     time.sleep(1); continue
-                buf = state.process.stdout.read(1316 * 16)
-                if not buf:
+
+                # Non-blocking check for data
+                r, _, _ = select.select([state.process.stdout], [], [], 0.5)
+                if r:
+                    buf = state.process.stdout.read(1316 * 16)
+                    if not buf:
+                        if state.process.poll() is not None: start_ffmpeg()
+                        time.sleep(0.1); continue
+                    
+                    with state.lock:
+                        for q in state.clients[:]:
+                            try: q.put_nowait(buf)
+                            except queue.Full: pass
+                else:
                     if state.process.poll() is not None: start_ffmpeg()
-                    time.sleep(0.1); continue
-                with state.lock:
-                    for q in state.clients[:]:
-                        try: q.put_nowait(buf)
-                        except queue.Full: pass
 
         threading.Thread(target=broadcaster, daemon=True).start()
 
@@ -259,7 +277,7 @@ class TooManyStreams:
                 self.send_header("Content-Type", "video/mp2t")
                 self.send_header("Connection", "keep-alive")
                 self.end_headers()
-                q = queue.Queue(maxsize=50)
+                q = queue.Queue(maxsize=100)
                 with state.lock: state.clients.append(q)
                 TooManyStreams.trigger_refresh()
                 try:
@@ -270,19 +288,21 @@ class TooManyStreams:
                         if q in state.clients: state.clients.remove(q)
             def log_message(self, *args): pass
 
-        # AUTO-PORT SELECTION
         httpd = ThreadingHTTPServer((host, port), Handler)
         actual_port = httpd.server_port
         actual_host = httpd.server_address[0]
-        
-        # Update the database with the actual port found
         internal_url = f"http://{actual_host}:{actual_port}/stream.ts"
-        logger.info(f"TMS: HTTP Server starting on {internal_url}")
         
-        # Update the Stream object in the database
-        try:
-            TooManyStreams.get_or_create_stream(url=internal_url)
-        except Exception as e:
-            logger.error(f"TMS: Failed to update database with internal URL: {e}")
-
+        # DEFER DB UPDATE to let Dispatcharr finish starting
+        def deferred_db_update():
+            time.sleep(30)
+            try:
+                TooManyStreams.get_or_create_stream(url=internal_url)
+                logger.info(f"TMS: Database updated with internal URL: {internal_url}")
+            except Exception as e:
+                logger.error(f"TMS: Failed to update database: {e}")
+        
+        threading.Thread(target=deferred_db_update, daemon=True).start()
+        
+        logger.info(f"TMS: HTTP Server listening on {internal_url}")
         httpd.serve_forever()

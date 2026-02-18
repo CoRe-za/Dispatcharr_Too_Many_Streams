@@ -1,7 +1,6 @@
 # plugin.py
 """Too Many Streams Plugin for Dispatcharr"""
 # -*- coding: utf-8 -*-
-# Python imports
 import os
 import logging
 import socket
@@ -12,163 +11,89 @@ import inspect
 # Configure logging as early as possible
 logger = logging.getLogger('plugins.too_many_streams')
 log_file = os.path.join(os.path.dirname(__file__), "debug.log")
-file_handler = logging.FileHandler(log_file)
-file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
-logger.addHandler(file_handler)
+try:
+    file_handler = logging.FileHandler(log_file)
+    file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+    logger.addHandler(file_handler)
+except Exception:
+    pass # Fallback to console only if file is unwritable
 logger.setLevel(logging.INFO)
 
-try:
-    # Too ManyStreams imports
-    from .src.TooManyStreams import TooManyStreams
-    from .src.TooManyStreamsConfig import TooManyStreamsConfig
-    
-    # Safely log the source path
-    try:
-        source_path = inspect.getfile(TooManyStreamsConfig)
-        logger.info(f"Imported TooManyStreamsConfig from {source_path}")
-    except Exception:
-        logger.info("Imported TooManyStreamsConfig (could not determine source path)")
-        
-except Exception as e:
-    logger.error(f"Failed to import plugin components: {e}", exc_info=True)
-    raise
+# DEFERRED IMPORTS to prevent startup crashes
+TooManyStreams = None
+TooManyStreamsConfig = None
 
+def _import_plugin():
+    global TooManyStreams, TooManyStreamsConfig
+    if TooManyStreams is None:
+        try:
+            from .src.TooManyStreams import TooManyStreams as TMS
+            from .src.TooManyStreamsConfig import TooManyStreamsConfig as TMSC
+            TooManyStreams = TMS
+            TooManyStreamsConfig = TMSC
+            logger.info("TMS components imported successfully.")
+        except Exception as e:
+            logger.error(f"Failed to import plugin components: {e}", exc_info=True)
+            raise
 
 class Plugin:
     name = "too_many_streams"
-    version = "2.1.0"
+    version = "2.2.0"
     description = "Handles scenarios where too many streams are open and what users see."
-    initialized = False
-
-    # LOAD FILE-BASED DEFAULTS FOR THE UI FROM USER SPECIFIED PATH
-    _file_config = TooManyStreamsConfig.get_plugin_persistent_config()
-
+    
+    # Static fields defined without DB access
     fields = [
-        {
-            "id": "stream_title",
-            "label": "Stream Title",
-            "type": "string",
-            "default": _file_config.get("stream_title", "Sorry, this channel is unavailable."),
-            "placeholder": "The title displayed on the 'Too Many Streams' image.",
-            "help_text": "The title displayed on the 'Too Many Streams' image.",
-        },
-        {
-            "id": "stream_description",
-            "label": "Stream Description",
-            "type": "string",
-            "default": _file_config.get("stream_description", "While this channel is not currently available, here are some other channels you can watch."),
-            "placeholder": "The description displayed on the 'Too Many Streams' image.",
-            "help_text": "The description displayed on the 'Too Many Streams' image.",
-        },
-        {
-            "id": "stream_channel_cols",
-            "label": "Number of channel columns",
-            "type": "number",
-            "default": int(_file_config.get("stream_channel_cols", 5)),
-            "placeholder": "The number of columns of channels to display on the 'Too Many Streams' image.",
-            "help_text": "The number of columns of channels to display on the 'Too Many Streams' image.",
-        },
-        {
-            "id": "tms_image_path",
-            "label": "Static Image Path",
-            "type": "string",
-            "default": _file_config.get("tms_image_path", None),
-            "placeholder": "Path to a static image to use instead of the dynamic image.",
-            "help_text": "Path to a static image to use instead of the dynamic image.",
-        },
-        {
-            "id": "tms_log_level",
-            "label": "Log Level",
-            "type": "string",
-            "default": _file_config.get("tms_log_level", "INFO"),
-            "placeholder": "Log level for the plugin.",
-            "help_text": "Log level for the plugin.",
-        },
+        {"id": "stream_title", "label": "Stream Title", "type": "string", "default": "Sorry, this channel is unavailable."},
+        {"id": "stream_description", "label": "Stream Description", "type": "string", "default": "While this channel is not currently available, here are some other channels you can watch."},
+        {"id": "stream_channel_cols", "label": "Number of channel columns", "type": "number", "default": 5},
+        {"id": "tms_image_path", "label": "Static Image Path", "type": "string", "default": ""},
+        {"id": "tms_log_level", "label": "Log Level", "type": "string", "default": "INFO"},
     ]
 
     actions = [
-        {
-            "id": "apply_too_many_streams",
-            "label": "Apply 'Too Many Streams' to channels",
-            "description": "Adds the 'Too Many Streams' stream to the bottom of all channels.",
-            "confirm": {
-                "required": True,
-                "title": "Apply 'Too Many Streams'?",
-                "message": "This adds the 'Too Many Streams' stream to the bottom of all channels.",
-            },
-        },
-        {
-            "id": "remove_too_many_streams",
-            "label": "Remove 'Too Many Streams' from channels",
-            "description": "Removes the 'Too Many Streams' stream from all channels.",
-            "confirm": {
-                "required": True,
-                "title": "Remove 'Too Many Streams'?",
-                "message": "Removes the 'Too Many Streams' stream from all channels.",
-            },
-        },
-        {
-            "id": "save_plugin_config",
-            "label": "Save Plugin Config",
-            "description": "Saves the current plugin configuration to persistent storage. So if you ever update/reinstall the plugin, your settings are retained.",
-            "confirm": {
-                "required": True,
-                "title": "Save Plugin Config to disk?",
-                "message": "Saves the current plugin configuration to persistent storage.",
-            },
-        },
-        {
-            "id": "search_for_config",
-            "label": "Search for Persistent Config",
-            "description": "Manually searches for and reloads the persistent configuration file from disk.",
-        },
-    ]    
+        {"id": "apply_too_many_streams", "label": "Apply to all channels"},
+        {"id": "remove_too_many_streams", "label": "Remove from all channels"},
+        {"id": "save_plugin_config", "label": "Save Plugin Config"},
+    ]
+
+    _initialized = False
+    _lock = threading.Lock()
 
     def __init__(self):
-        self.initialize()
+        # DO NOT initialize here. Dispatcharr imports classes early.
+        pass
 
-    def initialize(self):
-        if self.initialized:
-            return
+    def ensure_initialized(self):
+        with self._lock:
+            if self._initialized:
+                return
             
-        config = TooManyStreamsConfig.get_config()
-        logger.setLevel(config.tms_log_level)
+            try:
+                _import_plugin()
+                
+                config = TooManyStreamsConfig.get_config()
+                logger.setLevel(config.tms_log_level)
 
-        HOST, PORT = TooManyStreamsConfig.get_host_and_port()
-        image_to_use = config.tms_image_path
+                TooManyStreams.install_get_stream_override()
 
-        TooManyStreams.install_get_stream_override()
-
-        if not self._can_bind(HOST, PORT):
-            logger.error(f"Too Many Streams: Could not bind to {HOST}:{PORT}. Port might be in use.")
-            return
-
-        if not TooManyStreams.check_requirements_met():
-            TooManyStreams.install_requirements()
-
-        threading.Thread(
-            target=TooManyStreams.stream_still_mpegts_http_thread,
-            args=(image_to_use,),
-            kwargs={"host": HOST, "port": PORT},
-            daemon=True,
-        ).start()
-            
-        self.initialized = True
-        logger.info("Too Many Streams plugin initialized.")
-
-    @staticmethod
-    def _can_bind(host, port) -> bool:
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        try:
-            s.bind((host, port))
-            s.close()
-            return True
-        except OSError:
-            s.close()
-            return False
+                HOST, PORT = TooManyStreamsConfig.get_host_and_port()
+                
+                # Start background server
+                threading.Thread(
+                    target=TooManyStreams.stream_still_mpegts_http_thread,
+                    args=(config.tms_image_path,),
+                    kwargs={"host": HOST, "port": PORT},
+                    daemon=True,
+                ).start()
+                
+                self._initialized = True
+                logger.info("Too Many Streams plugin deferred initialization complete.")
+            except Exception as e:
+                logger.error(f"Initialization failed: {e}", exc_info=True)
 
     def run(self, action: str = None, params: dict = None, context: dict = None, *args, **kwargs):
-        self.initialize()
+        self.ensure_initialized()
+        
         logger.info(f"Running action: {action}")
         
         if action == "apply_too_many_streams":
@@ -177,14 +102,8 @@ class Plugin:
             TooManyStreams.remove_from_all_channels()
         elif action == "save_plugin_config":
             settings = (context or {}).get("settings") or (context or {}).get("config") or (params or {})
-            logger.info(f"Saving settings: {settings}")
             if settings:
                 TooManyStreamsConfig.save_plugin_persistent_config(settings)
-            else:
-                logger.warning("No settings found to save.")
-        elif action == "search_for_config":
-            logger.info("Manually searching for and reloading config...")
-            TooManyStreamsConfig.clear_cache()
-            TooManyStreamsConfig.get_config()
-
+                return {"status": "ok", "message": "Settings saved."}
+        
         return {"status": "ok"}
