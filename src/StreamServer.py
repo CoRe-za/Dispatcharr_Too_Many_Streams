@@ -8,6 +8,7 @@ import queue
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from .PillowImageGen import PillowImageGen
+from .TooManyStreamsConfig import TooManyStreamsConfig
 
 logger = logging.getLogger('plugins.too_many_streams.StreamServer')
 
@@ -31,15 +32,27 @@ class StreamServer:
             logger.error("FFmpeg not found! StreamServer cannot start.")
 
     def _get_ffmpeg_cmd(self, img_path):
-        return [
+        config = TooManyStreamsConfig.get_config()
+        encoder = config.video_encoder or "libx264"
+        
+        cmd = [
             self.ffmpeg_bin, 
             "-loop", "1", 
             "-framerate", "1", 
             "-i", img_path,
             "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo",
-            "-c:v", "libx264", 
-            "-preset", "ultrafast", 
-            "-tune", "stillimage", 
+            "-c:v", encoder,
+        ]
+        
+        # Add encoder-specific flags
+        if "nvenc" in encoder:
+            cmd.extend(["-preset", "p1", "-tune", "ull"])
+        elif "qsv" in encoder:
+             cmd.extend(["-preset", "veryfast"])
+        else:
+             cmd.extend(["-preset", "ultrafast", "-tune", "stillimage"])
+
+        cmd.extend([
             "-r", "1", 
             "-g", "1",
             "-b:v", "800k", 
@@ -47,7 +60,9 @@ class StreamServer:
             "-b:a", "96k", 
             "-f", "mpegts", 
             "pipe:1"
-        ]
+        ])
+        
+        return cmd
 
     def _start_ffmpeg(self):
         with self.process_lock:

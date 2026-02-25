@@ -36,7 +36,7 @@ except Exception as e:
 
 class Plugin:
     name = "too_many_streams"
-    version = "2.1.1"
+    version = "2.1.3"
     description = "Handles scenarios where too many streams are open and what users see."
     initialized = False
 
@@ -83,6 +83,14 @@ class Plugin:
             "default": _file_config.get("tms_log_level", "INFO"),
             "placeholder": "Log level for the plugin.",
             "help_text": "Log level for the plugin.",
+        },
+        {
+            "id": "video_encoder",
+            "label": "Video Encoder",
+            "type": "string",
+            "default": _file_config.get("video_encoder", "libx264"),
+            "placeholder": "libx264",
+            "help_text": "FFmpeg encoder (e.g., libx264, h264_nvenc, h264_qsv, h264_omx, h264_videotoolbox). Use libx264 if unsure.",
         },
         {
             "id": "theme_bg_color",

@@ -9,6 +9,9 @@ class PluginConfig:
     tms_image_path: Optional[str] = None
     tms_log_level: str = "INFO"
     
+    # Advanced / Performance
+    video_encoder: str = "libx264"
+    
     # Theme Colors
     theme_bg_color: str = "#0F172A"
     theme_card_bg_color: str = "#1E293B"
@@ -25,6 +28,8 @@ class PluginConfig:
             stream_channel_cols=int(data.get("stream_channel_cols", cls.stream_channel_cols)),
             tms_image_path=data.get("tms_image_path", cls.tms_image_path),
             tms_log_level=str(data.get("tms_log_level", cls.tms_log_level)).upper(),
+            
+            video_encoder=str(data.get("video_encoder", cls.video_encoder)),
             
             theme_bg_color=str(data.get("theme_bg_color", cls.theme_bg_color)),
             theme_card_bg_color=str(data.get("theme_card_bg_color", cls.theme_card_bg_color)),
