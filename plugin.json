@@ -1,7 +1,7 @@
 {
   "name": "too_many_streams",
-  "version": "2.0.1",
-  "description": "Handles scenarios where too many streams are open and what users see.",
+  "version": "2.1.1",
+  "description": "Handles scenarios where too many streams are open and what users see. Features a customizable dynamic splash screen.",
   "author": "JamesWRC",
   "fields": [
     {
@@ -43,6 +43,54 @@
       "default": "INFO",
       "placeholder": "Log level for the plugin.",
       "help_text": "Log level for the plugin."
+    },
+    {
+      "id": "theme_bg_color",
+      "label": "Background Color",
+      "type": "string",
+      "default": "#0F172A",
+      "placeholder": "#0F172A",
+      "help_text": "Hex code for the main background."
+    },
+    {
+      "id": "theme_card_bg_color",
+      "label": "Card Background Color",
+      "type": "string",
+      "default": "#1E293B",
+      "placeholder": "#1E293B",
+      "help_text": "Hex code for the channel card background."
+    },
+    {
+      "id": "theme_card_border_color",
+      "label": "Card Border Color",
+      "type": "string",
+      "default": "#334155",
+      "placeholder": "#334155",
+      "help_text": "Hex code for the card border."
+    },
+    {
+      "id": "theme_text_color",
+      "label": "Text Color",
+      "type": "string",
+      "default": "#F8FAFC",
+      "placeholder": "#F8FAFC",
+      "help_text": "Hex code for the main text."
+    },
+    {
+      "id": "theme_accent_color",
+      "label": "Accent Color",
+      "type": "string",
+      "default": "#38BDF8",
+      "placeholder": "#38BDF8",
+      "help_text": "Hex code for accents (e.g., channel number pill)."
+    },
+    {
+      "id": "theme_accent_text_color",
+      "label": "Accent Text Color",
+      "type": "string",
+      "default": "#0F172A",
+      "placeholder": "#0F172A",
+      "help_text": "Hex code for text inside accent pills."
     }
   ],
   "actions": [
@@ -60,6 +108,11 @@
       "id": "save_plugin_config",
       "label": "Save Plugin Config",
       "description": "Saves the current plugin configuration to persistent storage."
+    },
+    {
+      "id": "search_for_config",
+      "label": "Search for Persistent Config",
+      "description": "Manually searches for and reloads the persistent configuration file from disk."
     }
   ]
 }

@@ -36,7 +36,7 @@ except Exception as e:
 
 class Plugin:
     name = "too_many_streams"
-    version = "2.0.1"
+    version = "2.1.1"
     description = "Handles scenarios where too many streams are open and what users see."
     initialized = False
 
@@ -83,6 +83,54 @@ class Plugin:
             "default": _file_config.get("tms_log_level", "INFO"),
             "placeholder": "Log level for the plugin.",
             "help_text": "Log level for the plugin.",
+        },
+        {
+            "id": "theme_bg_color",
+            "label": "Background Color",
+            "type": "string",
+            "default": _file_config.get("theme_bg_color", "#0F172A"),
+            "placeholder": "#0F172A",
+            "help_text": "Hex code for the main background.",
+        },
+        {
+            "id": "theme_card_bg_color",
+            "label": "Card Background Color",
+            "type": "string",
+            "default": _file_config.get("theme_card_bg_color", "#1E293B"),
+            "placeholder": "#1E293B",
+            "help_text": "Hex code for the channel card background.",
+        },
+        {
+            "id": "theme_card_border_color",
+            "label": "Card Border Color",
+            "type": "string",
+            "default": _file_config.get("theme_card_border_color", "#334155"),
+            "placeholder": "#334155",
+            "help_text": "Hex code for the card border.",
+        },
+        {
+            "id": "theme_text_color",
+            "label": "Text Color",
+            "type": "string",
+            "default": _file_config.get("theme_text_color", "#F8FAFC"),
+            "placeholder": "#F8FAFC",
+            "help_text": "Hex code for the main text.",
+        },
+        {
+            "id": "theme_accent_color",
+            "label": "Accent Color",
+            "type": "string",
+            "default": _file_config.get("theme_accent_color", "#38BDF8"),
+            "placeholder": "#38BDF8",
+            "help_text": "Hex code for accents (e.g., channel number pill).",
+        },
+        {
+            "id": "theme_accent_text_color",
+            "label": "Accent Text Color",
+            "type": "string",
+            "default": _file_config.get("theme_accent_text_color", "#0F172A"),
+            "placeholder": "#0F172A",
+            "help_text": "Hex code for text inside accent pills.",
         },
     ]
 

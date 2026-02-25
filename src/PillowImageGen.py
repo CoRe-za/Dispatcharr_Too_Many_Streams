@@ -119,21 +119,32 @@ class PillowImageGen:
             self.logger.error("Error in get_active_streams", exc_info=True)
             return True # Force generation on error to be safe
 
+    def _hex_to_rgb(self, hex_color: str, default: tuple) -> tuple:
+        try:
+            hex_color = hex_color.lstrip('#')
+            return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+        except Exception:
+            return default
+
     def generate(self, force=False) -> bool:
         """Generates the image. Force=True bypasses the change check."""
         if not force and self._current_uuids == PillowImageGen._last_active_uuids and os.path.exists(self.out_path):
             return False
 
         width, height = 1920, 1080
-        bg_color = (15, 23, 42)
-        title_color = (248, 250, 252)
-        desc_color = (148, 163, 184)
-        card_bg_odd = (30, 41, 59)
-        card_bg_even = (37, 51, 70)
-        card_border = (51, 65, 85)
-        pill_bg_color = (56, 189, 248)
-        pill_text_color = (15, 23, 42)
-        name_color = (241, 245, 249)
+        config = TooManyStreamsConfig.get_config()
+        
+        bg_color = self._hex_to_rgb(config.theme_bg_color, (15, 23, 42))
+        title_color = self._hex_to_rgb(config.theme_text_color, (248, 250, 252))
+        desc_color = (148, 163, 184) # Keep secondary text static or derive? Let's keep it static for now or add config later.
+        
+        card_bg = self._hex_to_rgb(config.theme_card_bg_color, (30, 41, 59))
+        card_border = self._hex_to_rgb(config.theme_card_border_color, (51, 65, 85))
+        
+        pill_bg_color = self._hex_to_rgb(config.theme_accent_color, (56, 189, 248))
+        pill_text_color = self._hex_to_rgb(config.theme_accent_text_color, (15, 23, 42))
+        
+        name_color = title_color # Use main text color for channel names
         unavailable_color = (239, 68, 68)
         
         try:
@@ -177,7 +188,14 @@ class PillowImageGen:
                     col, row = i % cols, i // cols
                     x = grid_margin + col * (card_w + card_spacing)
                     y = grid_y_start + row * (card_h + card_spacing)
-                    draw.rounded_rectangle([x, y, x + card_w, y + card_h], radius=12, fill=(card_bg_even if i % 2 == 0 else card_bg_odd) + (255,), outline=card_border + (255,), width=2)
+                    
+                    # Alternating card background slightly? 
+                    # The original code had card_bg_odd/even. 
+                    # Let's simplify to just one card_bg for custom themes, or darken one slightly.
+                    # We will stick to the single configured card color for consistency.
+                    
+                    draw.rounded_rectangle([x, y, x + card_w, y + card_h], radius=12, fill=card_bg + (255,), outline=card_border + (255,), width=2)
+                    
                     px, py = 24, 24
                     pill_text = f"CH {channel_num.replace('#', '')}"
                     p_bbox = draw.textbbox((0, 0), pill_text, font=pill_font)
@@ -189,7 +207,7 @@ class PillowImageGen:
                     icon = self._get_cached_logo(icon_url)
                     if icon:
                         icon.thumbnail((icon_size, icon_size), Image.Resampling.LANCZOS)
-                        draw.rounded_rectangle([icon_x, icon_y, icon_x + icon_size, icon_y + icon_size], radius=8, fill=bg_color + (255,), outline=(71, 85, 105, 255), width=1)
+                        draw.rounded_rectangle([icon_x, icon_y, icon_x + icon_size, icon_y + icon_size], radius=8, fill=bg_color + (255,), outline=card_border + (255,), width=1)
                         img.paste(icon, (int(icon_x), int(icon_y)), icon)
                     else:
                         draw.rectangle([icon_x, icon_y, icon_x + icon_size, icon_y + icon_size], fill=(bg_color + (255,)))
