@@ -26,11 +26,25 @@ Migrated all state handling to **Redis**.
 - **Atomic Operations:** Prevents race conditions when multiple users hit stream limits simultaneously.
 - **No Disk I/O:** Eliminates the need for slow "pickle" files, making the plugin much faster in containerized environments.
 
+### 🐛 Bug Fixes & Reliability
+- **Redis Key Handling:** Fixed `key.decode()` crash when Redis client returns strings instead of bytes (`decode_responses=True`).
+- **Config Cache:** Fixed plugin settings not taking effect — config cache is now cleared on every read so live UI changes apply immediately.
+- **EPG Integration:** Added current/next program display with progress bars on channel cards.
+- **Non-UUID Channel Keys:** Fixed crash when Redis keys contain non-UUID hashes (e.g. TMS client streams) — invalid UUIDs are filtered before DB queries.
+- **PIL Float Crash:** Fixed `TypeError: 'float' object cannot be interpreted as integer` in image generation by wrapping paste coordinates in `int()`.
+- **Bulk Apply/Remove:** Rewrote `apply_to_all_channels` and `remove_from_all_channels` to use bulk database operations instead of N+1 loops.
+- **Plugin Cleanup:** Changed default output path to `/tmp/` so uninstalling the plugin doesn't fail with `Directory not empty`.
+- **Config Refresh:** Config saves now trigger immediate image regeneration instead of waiting for the 60-second poll cycle.
+
 ## Installation (Dispatcharr v0.19+)
 
 1.  **Prepare the Zip:** Run the following command in the plugin directory:
     ```bash
-    tar -a -c -f TooManyStreams.zip plugin.py plugin.json __init__.py src img LICENSE README.md
+    tar -a -c -f TooManyStreams.zip *.py plugin.json LICENSE README.md
+    ```
+    Or on Windows:
+    ```powershell
+    Compress-Archive -Path *.py,plugin.json,LICENSE,README.md -DestinationPath TooManyStreams.zip
     ```
 2.  **Install Dependencies:** Ensure the following packages are in your Dispatcharr environment:
     ```bash
@@ -58,7 +72,9 @@ Migrated all state handling to **Redis**.
 
 ## Credits & Disclaimers
 - **Original Author:** This plugin is a fork of the original work by [JamesWRC](https://github.com/JamesWRC/Dispatcharr_Too_Many_Streams).
-- **Overhaul Development:** Extensive refactoring, performance optimizations, and architectural modernizations in this edition were driven and executed by **Gemini-cli**.
+- **Overhaul Development:** Extensive refactoring, performance optimizations, and architectural modernizations in this edition were driven and executed by **Gemini-CLI**.
+- **Bug Fixes & Polish:** Debugging, issue resolution, and code improvements powered by **OpenCode** (AI-assisted engineering).
+- **Disclaimer:** This software is provided "as is", without warranty of any kind. Use at your own risk.
 
 ---
-*Maintained with ❤️ for the Dispatcharr community.*
+*Maintained for the Dispatcharr community.*
