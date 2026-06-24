@@ -16,7 +16,7 @@ _tms_lock_fh = None
 
 class Plugin:
     name = "too_many_streams"
-    version = "3.0.0"
+    version = "3.1.0"
     description = "Handles scenarios where too many streams are open and what users see."
     author = "CoRe-za"
     min_dispatcharr_version = "v0.23.0"
