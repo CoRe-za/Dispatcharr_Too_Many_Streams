@@ -2,19 +2,15 @@
 """Too Many Streams Plugin for Dispatcharr"""
 # -*- coding: utf-8 -*-
 # Python imports
-import os
 import logging
 import socket
 import threading
-import sys
 import inspect
+import shutil
 
-# Configure logging as early as possible
+# Dispatcharr configures plugin logging; do not write into the installed plugin
+# directory because it may be read-only in container deployments.
 logger = logging.getLogger('plugins.too_many_streams')
-log_file = os.path.join(os.path.dirname(__file__), "debug.log")
-file_handler = logging.FileHandler(log_file)
-file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
-logger.addHandler(file_handler)
 logger.setLevel(logging.INFO)
 
 try:
@@ -36,8 +32,10 @@ except Exception as e:
 
 class Plugin:
     name = "too_many_streams"
-    version = "2.1.3"
+    version = "4.0.1"
     description = "Handles scenarios where too many streams are open and what users see."
+    author = "JamesWRC and contributors"
+    help_url = "https://github.com/CoRe-za/Dispatcharr_Too_Many_Streams"
     initialized = False
 
     # LOAD FILE-BASED DEFAULTS FOR THE UI FROM USER SPECIFIED PATH
@@ -145,28 +143,50 @@ class Plugin:
     actions = [
         {
             "id": "apply_too_many_streams",
-            "label": "Apply 'Too Many Streams' to channels",
-            "description": "Adds the 'Too Many Streams' stream to the bottom of all channels.",
+            "label": "Add TooManyStreams source to all channels",
+            "description": "Adds the TooManyStreams custom source at the bottom of every channel.",
+            "button_label": "Add source",
+            "button_variant": "filled",
+            "button_color": "green",
             "confirm": {
                 "required": True,
-                "title": "Apply 'Too Many Streams'?",
-                "message": "This adds the 'Too Many Streams' stream to the bottom of all channels.",
+                "title": "Add source to all channels?",
+                "message": "This adds the TooManyStreams source at order 9999 on every channel.",
             },
         },
         {
             "id": "remove_too_many_streams",
-            "label": "Remove 'Too Many Streams' from channels",
-            "description": "Removes the 'Too Many Streams' stream from all channels.",
+            "label": "Remove TooManyStreams source from all channels",
+            "description": "Removes the TooManyStreams custom source assignment from every channel.",
+            "button_label": "Remove source",
+            "button_variant": "outline",
+            "button_color": "red",
             "confirm": {
                 "required": True,
-                "title": "Remove 'Too Many Streams'?",
-                "message": "Removes the 'Too Many Streams' stream from all channels.",
+                "title": "Remove source from all channels?",
+                "message": "The automatic v4 capacity fallback remains available while the plugin is enabled.",
+            },
+        },
+        {
+            "id": "clean_legacy_assignments",
+            "label": "Clean legacy assignments",
+            "description": "Removes channel-stream links created by versions earlier than 4.0. Version 4 applies automatically while enabled.",
+            "button_label": "Clean",
+            "button_variant": "outline",
+            "button_color": "orange",
+            "confirm": {
+                "required": True,
+                "title": "Clean legacy assignments?",
+                "message": "This removes obsolete TooManyStreams links from channels. The v4 fallback remains active while the plugin is enabled.",
             },
         },
         {
             "id": "save_plugin_config",
             "label": "Save Plugin Config",
             "description": "Saves the current plugin configuration to persistent storage. So if you ever update/reinstall the plugin, your settings are retained.",
+            "button_label": "Save",
+            "button_variant": "filled",
+            "button_color": "blue",
             "confirm": {
                 "required": True,
                 "title": "Save Plugin Config to disk?",
@@ -177,10 +197,14 @@ class Plugin:
             "id": "search_for_config",
             "label": "Search for Persistent Config",
             "description": "Manually searches for and reloads the persistent configuration file from disk.",
+            "button_label": "Reload",
+            "button_variant": "outline",
+            "button_color": "gray",
         },
     ]    
 
     def __init__(self):
+        self.initialized = False
         self.initialize()
 
     def initialize(self):
@@ -193,10 +217,23 @@ class Plugin:
         HOST, PORT = TooManyStreamsConfig.get_host_and_port()
         image_to_use = config.tms_image_path
 
-        TooManyStreams.install_get_stream_override()
+        if not shutil.which("ffmpeg"):
+            logger.error("Too Many Streams: FFmpeg is required but was not found.")
+            return
+
+        TooManyStreams.install_url_resolver_override()
 
         if not self._can_bind(HOST, PORT):
-            logger.error(f"Too Many Streams: Could not bind to {HOST}:{PORT}. Port might be in use.")
+            # Dispatcharr can load a plugin in multiple worker processes. Only
+            # one worker owns the shared HTTP listener; every worker still needs
+            # the Channel.get_stream wrapper installed.
+            logger.info(
+                "Too Many Streams: %s:%s is already bound; assuming the shared "
+                "fallback server is running in another worker.",
+                HOST,
+                PORT,
+            )
+            self.initialized = True
             return
 
         if not TooManyStreams.check_requirements_met():
@@ -228,19 +265,32 @@ class Plugin:
         logger.info(f"Running action: {action}")
         
         if action == "apply_too_many_streams":
-            TooManyStreams.apply_to_all_channels()
+            added = TooManyStreams.apply_to_all_channels()
+            return {"status": "ok", "added": added}
         elif action == "remove_too_many_streams":
-            TooManyStreams.remove_from_all_channels()
+            removed = TooManyStreams.remove_from_all_channels()
+            return {"status": "ok", "removed": removed}
+        elif action == "clean_legacy_assignments":
+            removed = TooManyStreams.clean_legacy_assignments()
+            return {"status": "ok", "removed": removed}
         elif action == "save_plugin_config":
             settings = (context or {}).get("settings") or (context or {}).get("config") or (params or {})
             logger.info(f"Saving settings: {settings}")
             if settings:
                 TooManyStreamsConfig.save_plugin_persistent_config(settings)
+                TooManyStreams.trigger_refresh()
             else:
                 logger.warning("No settings found to save.")
         elif action == "search_for_config":
             logger.info("Manually searching for and reloading config...")
             TooManyStreamsConfig.clear_cache()
             TooManyStreamsConfig.get_config()
+            TooManyStreams.trigger_refresh()
 
         return {"status": "ok"}
+
+    def stop(self, context=None):
+        """Release process-local hooks and services on disable or reload."""
+        TooManyStreams.uninstall_url_resolver_override()
+        TooManyStreams.stop_server()
+        self.initialized = False

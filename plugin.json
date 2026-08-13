@@ -1,8 +1,10 @@
 {
-  "name": "too_many_streams",
-  "version": "2.1.3",
-  "description": "Handles scenarios where too many streams are open and what users see. Features a customizable dynamic splash screen.",
-  "author": "JamesWRC",
+  "id": "too_many_streams",
+  "name": "Too Many Streams",
+  "version": "4.0.1",
+  "description": "Dispatcharr v0.29-compatible fallback stream shown when provider connection capacity is exhausted.",
+  "author": "JamesWRC and contributors",
+  "help_url": "https://github.com/CoRe-za/Dispatcharr_Too_Many_Streams",
   "fields": [
     {
       "id": "stream_title",
@@ -32,7 +34,7 @@
       "id": "tms_image_path",
       "label": "Static Image Path",
       "type": "string",
-      "default": null,
+      "default": "",
       "placeholder": "Path to a static image to use instead of the dynamic image.",
       "help_text": "Path to a static image to use instead of the dynamic image."
     },
@@ -104,23 +106,43 @@
   "actions": [
     {
       "id": "apply_too_many_streams",
-      "label": "Apply 'Too Many Streams' to channels",
-      "description": "Adds the 'Too Many Streams' stream to the bottom of all channels."
+      "label": "Add TooManyStreams source to all channels",
+      "description": "Adds the TooManyStreams custom source at the bottom of every channel.",
+      "button_label": "Add source",
+      "button_variant": "filled",
+      "button_color": "green"
     },
     {
       "id": "remove_too_many_streams",
-      "label": "Remove 'Too Many Streams' from channels",
-      "description": "Removes the 'Too Many Streams' stream from all channels."
+      "label": "Remove TooManyStreams source from all channels",
+      "description": "Removes the TooManyStreams custom source assignment from every channel.",
+      "button_label": "Remove source",
+      "button_variant": "outline",
+      "button_color": "red"
+    },
+    {
+      "id": "clean_legacy_assignments",
+      "label": "Clean legacy assignments",
+      "description": "Removes obsolete channel-stream links created by versions earlier than 4.0.",
+      "button_label": "Clean",
+      "button_variant": "outline",
+      "button_color": "orange"
     },
     {
       "id": "save_plugin_config",
       "label": "Save Plugin Config",
-      "description": "Saves the current plugin configuration to persistent storage."
+      "description": "Saves the current plugin configuration to persistent storage.",
+      "button_label": "Save",
+      "button_variant": "filled",
+      "button_color": "blue"
     },
     {
       "id": "search_for_config",
       "label": "Search for Persistent Config",
-      "description": "Manually searches for and reloads the persistent configuration file from disk."
+      "description": "Manually searches for and reloads the persistent configuration file from disk.",
+      "button_label": "Reload",
+      "button_variant": "outline",
+      "button_color": "gray"
     }
   ]
 }

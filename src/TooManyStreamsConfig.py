@@ -95,15 +95,16 @@ class TooManyStreamsConfig:
 
     @staticmethod
     def get_host_and_port() -> tuple[str, int]:
+        # Force 0.0.0.0 for container compatibility
         _host = os.environ.get("TMS_HOST", "0.0.0.0")
         _port = int(os.environ.get("TMS_PORT", 1337))
         return (_host, _port)
     
     @staticmethod
     def get_stream_url() -> str:
-        host, port = TooManyStreamsConfig.get_host_and_port()
-        display_host = "127.0.0.1" if host == "0.0.0.0" else host
-        return TooManyStreamsConfig._STREAM_URL.format(host=display_host, port=port)
+        # Use localhost for internal Dispatcharr connections
+        _, port = TooManyStreamsConfig.get_host_and_port()
+        return TooManyStreamsConfig._STREAM_URL.format(host="127.0.0.1", port=port)
             
     @staticmethod
     def save_plugin_persistent_config(config: dict):

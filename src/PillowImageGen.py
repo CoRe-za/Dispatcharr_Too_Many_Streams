@@ -1,7 +1,6 @@
 import logging
 import os
 import re
-import requests
 import textwrap
 import time
 from PIL import Image, ImageDraw, ImageFont
@@ -9,14 +8,22 @@ from io import BytesIO
 from hashlib import md5
 
 from apps.channels.models import Channel
-from apps.proxy.ts_proxy.server import ProxyServer
-from apps.proxy.ts_proxy.channel_status import ChannelStatus
+from core.utils import RedisClient
+from apps.proxy.live_proxy.constants import ChannelMetadataField, ChannelState
+from apps.proxy.live_proxy.redis_keys import RedisKeys
+from core.image_proxy import (
+    IMAGE_FETCH_FAIL_TTL,
+    _fetch_remote_image,
+    image_fetch_failures,
+)
+from core.models import CoreSettings
+from core.utils import resolve_safe_local_data_path
 
 from .TooManyStreamsConfig import TooManyStreamsConfig
 
 
 DEFAULT_OUT_FILE = "too_many_streams.jpg"
-CACHE_DIR = "/tmp/tms_logos"
+CACHE_DIR = os.environ.get("TMS_LOGO_CACHE_DIR", "/tmp/tms_logos")
 
 class PillowImageGen:
     """
@@ -45,21 +52,40 @@ class PillowImageGen:
 
     def _get_cached_logo(self, url: str) -> Image.Image:
         if not url: return None
+
+        if url.startswith("/data"):
+            safe_path = resolve_safe_local_data_path(url)
+            if safe_path and os.path.isfile(safe_path):
+                try:
+                    return Image.open(safe_path).convert("RGBA")
+                except Exception:
+                    self.logger.debug("Could not load local logo %s", url, exc_info=True)
+            return None
+
+        if not url.startswith(("http://", "https://")):
+            return None
+
         hashed_url = md5(url.encode()).hexdigest()
         cache_path = os.path.join(CACHE_DIR, hashed_url)
         
         if os.path.exists(cache_path) and (time.time() - os.path.getmtime(cache_path) < 3600):
             try:
                 return Image.open(cache_path).convert("RGBA")
-            except Exception: pass
+            except Exception:
+                self.logger.debug("Ignoring invalid cached logo %s", cache_path)
 
         try:
-            resp = requests.get(url, timeout=3)
-            if resp.status_code == 200:
-                with open(cache_path, "wb") as f:
-                    f.write(resp.content)
-                return Image.open(BytesIO(resp.content)).convert("RGBA")
-        except Exception: pass
+            body, _content_type, _headers = _fetch_remote_image(
+                url,
+                failure_cache=image_fetch_failures,
+                fail_ttl=IMAGE_FETCH_FAIL_TTL,
+                user_agent=CoreSettings.get_default_user_agent(),
+            )
+            with open(cache_path, "wb") as f:
+                f.write(body)
+            return Image.open(BytesIO(body)).convert("RGBA")
+        except Exception:
+            self.logger.debug("Could not fetch logo %s", url, exc_info=True)
         return None
 
     def get_active_streams(self) -> bool:
@@ -68,18 +94,32 @@ class PillowImageGen:
         Returns: True if the list of streams has changed since last generation.
         """
         try:
-            proxy_server = ProxyServer.get_instance()
-            channel_pattern = "ts_proxy:channel:*:metadata"
+            redis_client = RedisClient.get_client()
+            channel_pattern = RedisKeys.channel_metadata("*")
             cursor = 0
             active_uuids = []
+            active_states = {
+                ChannelState.INITIALIZING,
+                ChannelState.CONNECTING,
+                ChannelState.WAITING_FOR_CLIENTS,
+                ChannelState.ACTIVE,
+                ChannelState.BUFFERING,
+            }
             
             while True:
-                cursor, keys = proxy_server.redis_client.scan(cursor, match=channel_pattern)
+                cursor, keys = redis_client.scan(
+                    cursor=cursor, match=channel_pattern, count=500
+                )
                 for key in keys:
-                    try:
-                        m = re.search(r"ts_proxy:channel:(.*):metadata", key.decode("utf-8"))
-                        if m: active_uuids.append(m.group(1))
-                    except: continue
+                    key_text = key.decode("utf-8") if isinstance(key, bytes) else str(key)
+                    match = re.fullmatch(r"live:channel:(.*):metadata", key_text)
+                    if not match:
+                        continue
+                    state = redis_client.hget(key, ChannelMetadataField.STATE)
+                    if isinstance(state, bytes):
+                        state = state.decode("utf-8", errors="replace")
+                    if state in active_states:
+                        active_uuids.append(match.group(1))
                 if cursor == 0: break
             
             active_uuids.sort()
@@ -89,24 +129,40 @@ class PillowImageGen:
             if not active_uuids: 
                 self.active_streams = []
             else:
-                channels = Channel.objects.filter(uuid__in=active_uuids).only('id', 'name', 'logo', 'uuid')
+                channels = Channel.objects.filter(uuid__in=active_uuids).select_related(
+                    "logo"
+                )
                 active_list = []
                 tms_url = TooManyStreamsConfig.get_stream_url()
                 
                 for ch in channels:
-                    channel_info = ChannelStatus.get_basic_channel_info(str(ch.uuid))
-                    if channel_info.get("url") == tms_url:
+                    metadata_key = RedisKeys.channel_metadata(str(ch.uuid))
+                    active_url = redis_client.hget(
+                        metadata_key, ChannelMetadataField.URL
+                    )
+                    if isinstance(active_url, bytes):
+                        active_url = active_url.decode("utf-8", errors="replace")
+                    if active_url == tms_url:
                         continue
+
+                    channel_number = ch.channel_number
+                    if channel_number is None:
+                        channel_number = ch.id
+                    elif float(channel_number).is_integer():
+                        channel_number = int(channel_number)
                     
                     active_list.append((
-                        f"#{ch.id}", 
+                        f"#{channel_number}",
                         ch.logo.url if ch.logo else "", 
                         ch.name
                     ))
                 
                 def channel_sort_key(item):
                     num_str = item[0].lstrip("#")
-                    return int(num_str) if num_str.isdigit() else 999999
+                    try:
+                        return float(num_str)
+                    except (TypeError, ValueError):
+                        return float("inf")
                 
                 active_list.sort(key=channel_sort_key)
                 self.active_streams = active_list[:15] 
@@ -115,7 +171,7 @@ class PillowImageGen:
             has_changed = self._current_uuids != PillowImageGen._last_active_uuids
             return has_changed
             
-        except Exception as e:
+        except Exception:
             self.logger.error("Error in get_active_streams", exc_info=True)
             return True # Force generation on error to be safe
 
@@ -154,8 +210,10 @@ class PillowImageGen:
             def load_font(size, bold=False):
                 fonts = ["arialbd.ttf", "arial.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"]
                 for f in fonts:
-                    try: return ImageFont.truetype(f, size)
-                    except: continue
+                    try:
+                        return ImageFont.truetype(f, size)
+                    except (OSError, ValueError):
+                        continue
                 return ImageFont.load_default()
 
             title_font, desc_font = load_font(48, True), load_font(20)
@@ -188,11 +246,6 @@ class PillowImageGen:
                     col, row = i % cols, i // cols
                     x = grid_margin + col * (card_w + card_spacing)
                     y = grid_y_start + row * (card_h + card_spacing)
-                    
-                    # Alternating card background slightly? 
-                    # The original code had card_bg_odd/even. 
-                    # Let's simplify to just one card_bg for custom themes, or darken one slightly.
-                    # We will stick to the single configured card color for consistency.
                     
                     draw.rounded_rectangle([x, y, x + card_w, y + card_h], radius=12, fill=card_bg + (255,), outline=card_border + (255,), width=2)
                     
