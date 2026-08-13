@@ -131,4 +131,5 @@ methods.
   normally required.
 
 Original plugin by [JamesWRC](https://github.com/JamesWRC/Dispatcharr_Too_Many_Streams).
+Development after v3.1.0 was completed with assistance from ChatGPT 5.6 Sol.
 Version 4 compatibility and reliability work by contributors.
